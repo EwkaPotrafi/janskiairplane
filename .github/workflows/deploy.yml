@@ -43,8 +43,18 @@ jobs:
             -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
             dist/ jackbr4@narvi.whatbox.ca:/home/jackbr4/apps/janskiairplane/dist/
 
-      - name: Verify site is serving
+      - name: Verify the live site is actually this app
         run: |
-          code=$(curl -fsS --retry 3 --retry-delay 2 \
-            -o /dev/null -w '%{http_code}' http://narvi.whatbox.ca:8790/)
-          echo "HTTP $code from http://narvi.whatbox.ca:8790/"
+          url=http://narvi.whatbox.ca:8790
+          body=$(curl -fsS --retry 3 --retry-delay 2 "$url/")
+
+          # A 200 alone is not proof: a stale placeholder also returns 200.
+          # Assert the served page is really this build.
+          if ! grep -q "Topaz W&B Calculator" <<<"$body"; then
+            echo "::error::$url/ returned 200 but is not this app. Served:"
+            echo "$body" | head -20
+            exit 1
+          fi
+
+          curl -fsS -o /dev/null "$url/manifest.webmanifest"
+          echo "✓ $url/ is serving this build (index + manifest OK)"
