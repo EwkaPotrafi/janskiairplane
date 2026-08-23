@@ -37,6 +37,13 @@ jobs:
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
+          # Prints only the fingerprint and key type, never the key itself.
+          # Compare against `ssh-keygen -lf ~/.ssh/authorized_keys` on the
+          # server to confirm the matching public key is installed.
+          echo "Deploy key fingerprint:"
+          ssh-keygen -l -f ~/.ssh/deploy_key || {
+            echo "::error::Key is malformed - ssh cannot parse it."; exit 1; }
+
       # Every remote call below is wrapped in `timeout`. Without it a remote
       # command that never speaks the rsync protocol leaves the client waiting
       # for its greeting indefinitely, and the job hangs instead of failing.
