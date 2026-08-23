@@ -44,28 +44,21 @@ jobs:
           ssh-keygen -l -f ~/.ssh/deploy_key || {
             echo "::error::Key is malformed - ssh cannot parse it."; exit 1; }
 
-      # Every remote call below is wrapped in `timeout`. Without it a remote
-      # command that never speaks the rsync protocol leaves the client waiting
-      # for its greeting indefinitely, and the job hangs instead of failing.
-      - name: Check SSH and target directory
-        run: |
-          SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
-               -o BatchMode=yes -o ConnectTimeout=15"
-          DEST=/home/jackbr4/apps/janskiairplane/dist
-
-          echo "--- whoami / rsync availability ---"
-          timeout 60 $SSH jackbr4@narvi.whatbox.ca \
-            "whoami; command -v rsync || echo 'NO RSYNC ON REMOTE'"
-
-          echo "--- ensure target exists ---"
-          timeout 60 $SSH jackbr4@narvi.whatbox.ca \
-            "mkdir -p $DEST && ls -ld $DEST"
-
+      # The deploy key on the seedbox is restricted to a forced command
+      # (command="..." in authorized_keys) that extracts a gzipped tarball
+      # from stdin into the web directory. It ignores any command we ask for,
+      # so rsync cannot work here: the server runs tar rather than
+      # `rsync --server`, no rsync protocol greeting ever arrives, and the
+      # client waits forever. Piping a tarball in is the supported interface.
       - name: Deploy to seedbox
         run: |
-          timeout 300 rsync -az --delete --timeout=60 \
-            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=15" \
-            dist/ jackbr4@narvi.whatbox.ca:/home/jackbr4/apps/janskiairplane/dist/
+          tar -czf - -C dist . | timeout 300 ssh \
+            -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=accept-new \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            jackbr4@narvi.whatbox.ca
+          echo "Tarball sent ($(du -sh dist | cut -f1) uncompressed)."
 
       - name: Verify the live site is actually this app
         run: |
