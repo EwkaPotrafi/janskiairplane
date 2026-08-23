@@ -1,24 +1,17 @@
-name: Deploy to GitHub Pages
+name: Deploy to seedbox
 
 on:
   push:
     branches: [main]
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+  workflow_dispatch:
 
 concurrency:
-  group: pages
+  group: deploy
   cancel-in-progress: true
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -29,13 +22,22 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run build
+      - name: Run tests
+        run: npm test -- --run
 
-      - uses: actions/configure-pages@v5
+      - name: Build
+        run: npm run build
 
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
+      - name: Write deploy key
+        env:
+          DEPLOY_KEY: ${{ secrets.SEEDBOX_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
 
-      - uses: actions/deploy-pages@v4
-        id: deployment
+      - name: Deploy to seedbox
+        run: |
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
+            dist/ jackbr4@narvi.whatbox.ca:/home/jackbr4/apps/janskiairplane/dist/
