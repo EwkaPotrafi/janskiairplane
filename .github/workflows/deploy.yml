@@ -12,6 +12,7 @@ concurrency:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -36,11 +37,27 @@ jobs:
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
 
+      # Every remote call below is wrapped in `timeout`. Without it a remote
+      # command that never speaks the rsync protocol leaves the client waiting
+      # for its greeting indefinitely, and the job hangs instead of failing.
+      - name: Check SSH and target directory
+        run: |
+          SSH="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+               -o BatchMode=yes -o ConnectTimeout=15"
+          DEST=/home/jackbr4/apps/janskiairplane/dist
+
+          echo "--- whoami / rsync availability ---"
+          timeout 60 $SSH jackbr4@narvi.whatbox.ca \
+            "whoami; command -v rsync || echo 'NO RSYNC ON REMOTE'"
+
+          echo "--- ensure target exists ---"
+          timeout 60 $SSH jackbr4@narvi.whatbox.ca \
+            "mkdir -p $DEST && ls -ld $DEST"
+
       - name: Deploy to seedbox
         run: |
-          rsync -az --delete \
-            --rsync-path="mkdir -p /home/jackbr4/apps/janskiairplane/dist && rsync" \
-            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
+          timeout 300 rsync -az --delete --timeout=60 \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=15" \
             dist/ jackbr4@narvi.whatbox.ca:/home/jackbr4/apps/janskiairplane/dist/
 
       - name: Verify the live site is actually this app
