@@ -39,5 +39,12 @@ jobs:
       - name: Deploy to seedbox
         run: |
           rsync -az --delete \
+            --rsync-path="mkdir -p /home/jackbr4/apps/janskiairplane/dist && rsync" \
             -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
             dist/ jackbr4@narvi.whatbox.ca:/home/jackbr4/apps/janskiairplane/dist/
+
+      - name: Verify site is serving
+        run: |
+          code=$(curl -fsS --retry 3 --retry-delay 2 \
+            -o /dev/null -w '%{http_code}' http://narvi.whatbox.ca:8790/)
+          echo "HTTP $code from http://narvi.whatbox.ca:8790/"
