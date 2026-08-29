@@ -4,7 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
-  // Seedbox serves this at the root of narvi.whatbox.ca:8790
+  // Seedbox serves this at the root of narvi.whatbox.ca:8791
   base: '/',
   plugins: [
     react(),

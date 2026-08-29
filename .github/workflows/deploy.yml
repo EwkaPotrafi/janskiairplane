@@ -29,9 +29,20 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Fail with something readable rather than an opaque ssh error.
+      - name: Check the deploy key is configured
+        env:
+          DEPLOY_KEY: ${{ secrets.TOPAZ_DEPLOY_KEY }}
+        run: |
+          if [ -z "$DEPLOY_KEY" ]; then
+            echo "::error::Secret TOPAZ_DEPLOY_KEY is not set on this repository."
+            echo "Settings -> Secrets and variables -> Actions -> New repository secret."
+            exit 1
+          fi
+
       - name: Write deploy key
         env:
-          DEPLOY_KEY: ${{ secrets.SEEDBOX_DEPLOY_KEY }}
+          DEPLOY_KEY: ${{ secrets.TOPAZ_DEPLOY_KEY }}
         run: |
           mkdir -p ~/.ssh
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
@@ -43,6 +54,20 @@ jobs:
           echo "Deploy key fingerprint:"
           ssh-keygen -l -f ~/.ssh/deploy_key || {
             echo "::error::Key is malformed - ssh cannot parse it."; exit 1; }
+
+      # This app now has its own key, directory and port on the seedbox, and
+      # that directory is the nginx root, so the archive must extract flat with
+      # index.html at its top level. A wrapper directory would put index.html
+      # one level below the root and the site would 403.
+      - name: Check the archive extracts flat
+        run: |
+          tar -czf /tmp/deploy.tar.gz -C dist .
+          echo "Archive top level:"; tar -tzf /tmp/deploy.tar.gz | grep -v '/.\+/' | sed 's/^/  /'
+          if ! tar -tzf /tmp/deploy.tar.gz | grep -qx './index.html'; then
+            echo "::error::index.html is not at the top level of the archive."
+            exit 1
+          fi
+          echo "✓ index.html is at the archive root"
 
       # The deploy key on the seedbox is restricted to a forced command
       # (command="..." in authorized_keys) that extracts a gzipped tarball
@@ -62,7 +87,7 @@ jobs:
 
       - name: Verify the live site is actually this app
         run: |
-          url=http://narvi.whatbox.ca:8790
+          url=http://narvi.whatbox.ca:8791
           body=$(curl -fsS --retry 3 --retry-delay 2 "$url/")
 
           # A 200 alone is not proof: a stale placeholder also returns 200.
